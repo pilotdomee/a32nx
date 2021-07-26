@@ -21,19 +21,19 @@ export class FlightModel {
         return (weight * loadFactor) / (1481.4 * (mach ** 2) * delta * this.wingArea);
     }
 
+    static getLiftCoefficientFromEAS(lift: number, eas: number): number {
+        return (295.369 * lift) / ((eas ** 2) * this.wingArea);
+    }
+
     /**
      * Get drag coefficient at given conditions
-     * @param weight in pounds
-     * @param mach self-explanatory
-     * @param delta pressure at the altitude divided by the pressure at sea level
+     * @param Cl coefficient of lift
      * @param spdBrkDeflected whether speedbrake is deflected at half or not
      * @param gearExtended whether gear is extended or not
      * @param flapConf flap configuration
      * @returns drag coefficient (Cd)
      */
-    static getDragCoefficient(weight: number, mach: number, delta: number, spdBrkDeflected = false, gearExtended = false, flapConf = FlapConf.CLEAN) : number {
-        const Cl = this.getLiftCoefficient(weight, mach, delta);
-
+    static getDragCoefficient(Cl: number, spdBrkDeflected = false, gearExtended = false, flapConf = FlapConf.CLEAN) : number {
         // Values taken at mach 0.78
         let baseDrag;
         switch (flapConf) {
@@ -72,58 +72,9 @@ export class FlightModel {
      * @returns drag
      */
     static getDrag(weight: number, mach: number, delta: number, spdBrkDeflected: boolean, gearExtended: boolean, flapConf: FlapConf): number {
-        const Cd = this.getDragCoefficient(weight, mach, delta, spdBrkDeflected, gearExtended, flapConf);
+        const Cl = this.getLiftCoefficient(weight, mach, delta);
+        const Cd = this.getDragCoefficient(Cl, spdBrkDeflected, gearExtended, flapConf);
         return 1481.4 * (mach ** 2) * delta * this.wingArea * Cd;
-    }
-
-    /**
-     * Gets acceleration factor for altitudes below troposphere
-     * @param mach self-explanatory
-     * @param temp actual temperature in Kelvin
-     * @param stdTemp standard day temperature in Kelvin
-     * @returns acceleration factor
-     */
-    static getAccelerationFactorBelowTropo(mach: number, temp: number, stdTemp: number): number {
-        return 1 - (0.133184 * mach ** 2) * (stdTemp / temp);
-    }
-
-    /**
-     * Gets acceleration factor for altitudes above troposphere
-     * @param mach self-explanatory
-     * @param flyingAtConstantMach if aircraft is flying at a constant mach
-     * @returns acceleration factor
-     */
-    static getAccelerationFactorAboveTropo(mach: number, flyingAtConstantMach: boolean): number {
-        if (flyingAtConstantMach) {
-            return 1;
-        }
-
-        const phi = (((1 + 0.2 * mach ** 2) ** 3.5) - 1) / ((0.7 * mach ** 2) * (1 + 0.2 * mach ** 2) ** 2.5);
-        return 1 + (0.7 * mach ** 2) * phi;
-    }
-
-    /**
-     * Placeholder
-     * @param mach
-     * @param temp
-     * @param stdTemp
-     * @param altitude
-     * @param tropoAlt
-     * @param flyingAtConstantMach
-     * @returns
-     */
-    static getAccelerationFactor(
-        mach: number,
-        temp: number,
-        stdTemp: number,
-        altitude: number,
-        tropoAlt: number,
-        flyingAtConstantMach: boolean,
-    ): number {
-        if (altitude >= tropoAlt) {
-            return this.getAccelerationFactorAboveTropo(mach, flyingAtConstantMach);
-        }
-        return this.getAccelerationFactorBelowTropo(mach, temp, stdTemp);
     }
 
     static getConstantThrustPathAngle(
@@ -133,6 +84,16 @@ export class FlightModel {
         accelFactor: number,
     ): number {
         return Math.asin(((thrust - drag) / weight) / accelFactor);
+    }
+
+    static getConstantThrustPathAngleFromCoefficients(
+        thrust: number,
+        weight: number,
+        Cl: number,
+        Cd: number,
+        accelFactor: number,
+    ): number {
+        return Math.asin(((thrust / weight) - (Cd / Cl)) / accelFactor);
     }
 
     /**

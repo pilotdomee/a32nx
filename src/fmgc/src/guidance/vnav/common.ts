@@ -6,14 +6,37 @@ export enum FlapConf {
     CONF_FULL
 }
 
+export enum AccelFactorMode {
+    CONSTANT_CAS,
+    CONSTANT_MACH,
+}
+
 export class Common {
     /**
-     * Get temperature ratio for a particular altitude.
-     * @param alt altitude
+     * Calculates ISA temperature as a function of altitude
+     * @param alt in feet
+     * @param aboveTropo boolean
+     * @returns ISA temperature in celsius
+     */
+    static getIsaTempFromAltitude(alt: number, aboveTropo = false): number {
+        if (aboveTropo) {
+            return -56.5;
+        }
+        return 15 - (0.0019812 * alt);
+    }
+
+    /**
+     * Get temperature ratio for a particular altitude (below tropopause)
+     * @param alt pressure altitude
+     * @param isaDev ISA deviation in celsius
+     * @param aboveTropo whether the aircraft is above the tropopause
      * @returns temperature ratio
      */
-    static getTheta(alt: number): number {
-        return (288.15 - 1.98 * alt / 1000) / 288.15;
+    static getTheta(alt: number, isaDev = 0, aboveTropo = false): number {
+        if (aboveTropo) {
+            return (216.65 + isaDev) / 288.15;
+        }
+        return (288.15 - (0.0019812 * alt) + isaDev) / 288.15;
     }
 
     /**
@@ -29,10 +52,15 @@ export class Common {
     /**
      * Get pressure ratio for a particular theta
      * @param theta temperature ratio
+     * @param aboveTropo whether the aircraft is above the tropopause
+     * @param alt? pressure altitude used only if aboveTropo is true
      * @returns pressure ratio
      */
-    static getDelta(theta: number): number {
-        return theta ** 5.256;
+    static getDelta(theta: number, aboveTropo = false, alt?: number): number {
+        if (aboveTropo && alt !== undefined) {
+            return 0.22336 * Math.exp((36089.24 - alt) / 20805.7);
+        }
+        return theta ** 5.25588;
     }
 
     /**
@@ -55,11 +83,76 @@ export class Common {
         return 661.4786 * mach * Math.sqrt(theta);
     }
 
+    static machToEAS(mach: number, delta: number): number {
+        return 661.4786 * mach * Math.sqrt(delta);
+    }
+
+    static CAStoMach(cas: number, delta: number): number {
+        const term1 = 1 + 0.2 * (cas / 661.4786) ** 2;
+        const term2 = (1 / delta) * ((term1 ** 3.5) - 1);
+        const term3 = 5 * (((term2 + 1) ** (1 / 3.5)) - 1);
+        return Math.sqrt(term3);
+    }
+
     static TAStoCAS(tas: number, theta: number, delta: number): number {
         const term1 = 1 + (1 / theta) * (tas / 1479.1) ** 2;
         const term2 = delta * ((term1 ** 3.5) - 1) + 1;
         const term3 = ((term2) ** (1 / 3.5)) - 1;
         return 1479.1 * Math.sqrt(term3);
+    }
+
+    static CAStoTAS(cas: number, theta: number, delta: number): number {
+        const term1 = 1 + 0.2 * (cas / 661.4786) ** 2;
+        const term2 = (1 / delta) * ((term1 ** 3.5) - 1);
+        const term3 = theta * (((term2 + 1) ** (1 / 3.5)) - 1);
+        return 1479.1 * Math.sqrt(term3);
+    }
+
+    static CAStoEAS(cas: number, delta: number): number {
+        const term1 = 1 + 0.2 * (cas / 661.4786) ** 2;
+        const term2 = (1 / delta) * ((term1 ** 3.5) - 1);
+        const term3 = delta * (((term2 + 1) ** (1 / 3.5)) - 1);
+        return 1479.1 * Math.sqrt(term3);
+    }
+
+    static getAccelFactorCAS(mach: number, aboveTropo: boolean, tempRatio?: number): number {
+        const phi = (((1 + 0.2 * mach ** 2) ** 3.5) - 1) / ((0.7 * mach ** 2) * (1 + 0.2 * mach ** 2) ** 2.5);
+        if (aboveTropo) {
+            return 0.7 * (mach ** 2) * phi;
+        }
+        return 0.7 * (mach ** 2) * (phi - 0.190263 * tempRatio);
+    }
+
+    static getAccelFactorMach(mach: number, aboveTropo: boolean, tempRatio?: number): number {
+        if (aboveTropo) {
+            return 0;
+        }
+        return -0.13318 * (mach ** 2) * tempRatio;
+    }
+
+    /**
+     * Placeholder
+     * @param mach
+     * @param temp
+     * @param stdTemp
+     * @param aboveTropo
+     * @param accelFactorMode
+     * @returns
+     */
+    static getAccelerationFactor(
+        mach: number,
+        temp: number,
+        altitude: number,
+        aboveTropo: boolean,
+        accelFactorMode: AccelFactorMode,
+    ): number {
+        const stdTemp = Common.getIsaTempFromAltitude(altitude, aboveTropo);
+        const tempRatio = stdTemp / temp;
+        if (accelFactorMode === AccelFactorMode.CONSTANT_CAS) {
+            return Common.getAccelFactorCAS(mach, aboveTropo, tempRatio);
+        }
+
+        return Common.getAccelFactorMach(mach, aboveTropo, tempRatio);
     }
 
     static interpolate(x: number, x0: number, x1: number, y0: number, y1: number): number {

@@ -8,10 +8,11 @@ export class CostIndex {
      * @param mach
      * @param altitude in feet
      * @param weight in pounds
+     * @param isaDev ISA deviation (in celsius)
      * @returns SR in nautical miles per pound of fuel
      */
-    static calculateSpecificRange(mach: number, altitude: number, weight: number): number {
-        const theta = Common.getTheta(altitude);
+    static calculateSpecificRange(mach: number, altitude: number, weight: number, isaDev: number): number {
+        const theta = Common.getTheta(altitude, isaDev);
         const theta2 = Common.getTheta2(theta, mach);
         const delta = Common.getDelta(theta);
         const delta2 = Common.getDelta2(delta, mach);
@@ -45,10 +46,11 @@ export class CostIndex {
      * Placeholder
      * @param altitude in feet
      * @param weight in pounds
+     * @param isaDev ISA deviation (in celsius)
      * @returns Mmrc
      */
-    static naiveFindMmrc(altitude: number, weight: number): number {
-        const theta = Common.getTheta(altitude);
+    static naiveFindMmrc(altitude: number, weight: number, isaDev: number): number {
+        const theta = Common.getTheta(altitude, isaDev);
         const delta = Common.getDelta(theta);
         const m1 = Math.min(CostIndex.initialMachEstimate(weight, delta), 0.78);
         const mRound = Math.round((m1 + Number.EPSILON) * 100) / 100;
@@ -57,7 +59,7 @@ export class CostIndex {
         const upperBound = Math.min(mRound + 0.1, 0.79);
         const results = [];
         for (let i = lowerBound; i < upperBound; i += 0.01) {
-            results.push(CostIndex.calculateSpecificRange(i, altitude, weight));
+            results.push(CostIndex.calculateSpecificRange(i, altitude, weight, isaDev));
         }
 
         const indexofMax = results.reduce((iMax, x, i, arr) => (x > arr[iMax] ? i : iMax), 0);
@@ -69,12 +71,13 @@ export class CostIndex {
      * @param ci in kg/min
      * @param flightLevel altitude in feet / 100
      * @param weight in pounds
+     * @param isaDev ISA deviation (in celsius)
      * @param headwind in knots (negative for tailwind)
      * @returns econ mach
      */
-    static costIndexToMach(ci: number, flightLevel: number, weight: number, headwind = 0): number {
+    static costIndexToMach(ci: number, flightLevel: number, weight: number, isaDev = 0, headwind = 0): number {
         // Add 0.01 mach for every 100 kts of headwind (subtract for tailwind)
-        const Mmrc = CostIndex.naiveFindMmrc(flightLevel * 100, weight) + (headwind / 10000);
+        const Mmrc = CostIndex.naiveFindMmrc(flightLevel * 100, weight, isaDev) + (headwind / 10000);
         return ((-1 * (0.8 - Mmrc)) * Math.exp(-0.05 * ci)) + 0.8;
     }
 
@@ -82,7 +85,7 @@ export class CostIndex {
      * Placeholder
      * @param ci in kg/min
      * @param flightLevel altitude in feet / 100
-     * @param weight in pounds
+     * @param weight in pounds - should be total weight at T/C
      * @returns econ climb cas
      */
     static costIndexToClimbCas(ci: number, flightLevel: number, weight: number): number {
@@ -95,7 +98,7 @@ export class CostIndex {
      * Placeholder
      * @param ci in kg/min
      * @param flightLevel altitude in feet / 100
-     * @param weight in pounds
+     * @param weight in pounds - should be total weight at T/D
      * @returns econ descent cas
      */
     static costIndexToDescentCas(ci: number, flightLevel: number, weight: number): number {

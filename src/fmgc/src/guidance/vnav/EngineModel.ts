@@ -200,6 +200,10 @@ export class EngineModel {
 
     // static getCN1fromUncorrectedThrust(thrust: number)
 
+    static getCorrectedN1(n1: number, theta2: number): number {
+        return n1 / Math.sqrt(theta2);
+    }
+
     static getUncorrectedN1(cn1: number, theta2: number): number {
         return cn1 * Math.sqrt(theta2);
     }
